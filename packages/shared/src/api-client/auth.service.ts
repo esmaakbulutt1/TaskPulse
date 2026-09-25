@@ -1,10 +1,12 @@
-import type { LoginInput, ProfileUpdateInput, RegisterInput, SessionResponse } from '../types/auth';
+import { profile } from 'console';
+import type { LoginInput, ProfileInput, ProfileUpdateInput, RegisterInput, SessionResponse } from '../types/auth';
 import type { Requester } from './http';
 
 export function createAuthService({ request }: Requester) {
 	return {
 		register: (input: RegisterInput) => request<SessionResponse>('/api/v1/auth/register', { method: 'POST', body: JSON.stringify(input) }),
 		login: (input: LoginInput) => request<SessionResponse>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify(input) }),
+		profile: (input: ProfileInput) => request<SessionResponse>('/api/v1/auth/profile', { method: 'PATCH', body: JSON.stringify(input) }),
 		/**
 		 * Rotates the cookie pair; the old refresh token is burned server-side on success.
 		 * You rarely call this yourself — the client refreshes on its own after a 401.

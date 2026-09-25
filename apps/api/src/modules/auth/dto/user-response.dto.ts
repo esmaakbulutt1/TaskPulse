@@ -15,6 +15,12 @@ export class UserResponseDto implements Omit<AuthUser, 'createdAt' | 'updatedAt'
 	@ApiProperty({ example: 'Admin' })
 	name!: string;
 
+	@ApiProperty({ example: 'Yılmaz', nullable: true })
+	surname!: string | null;
+
+	@ApiProperty({ example: '2000-12-15', nullable: true })
+	bday!: string | null;
+
 	@ApiProperty({ enum: USER_ROLES, example: 'user' })
 	role!: UserRole;
 

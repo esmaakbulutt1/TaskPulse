@@ -1,8 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { trim } from '../../../core/http/transforms';
 import { IsEnum, IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
 import { EXAMPLE_STATUSES, type ExampleStatus } from 'shared';
+import { trim } from '../../../core/http/transforms';
 
 export class CreateExampleDto {
 	@ApiProperty({ maxLength: 200 })

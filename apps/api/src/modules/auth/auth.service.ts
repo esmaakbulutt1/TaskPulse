@@ -9,7 +9,7 @@ import { durationToMs } from '../../core/utils/duration.util';
 import { hashPassword, verifyPassword } from '../../core/utils/password.util';
 import { ConfigService } from '@nestjs/config';
 import { isWithinReuseGrace } from './common';
-import type { LoginDto, RegisterDto, UpdateProfileDto } from './dto';
+import type { LoginDto, ProfileDto, RegisterDto, UpdateProfileDto } from './dto';
 
 export interface IssuedSession {
 	user: AuthUser;
@@ -71,8 +71,7 @@ export class AuthService {
 	}
 
 	/**
-	 * Rotation + reuse detection. The old token is burned and a new pair is issued; a token that
-	 * comes back after it was already spent is treated as stolen and takes its whole family down.
+ comes back after it was already spent is treated as stolen and takes its whole family down.
 	 */
 	async refreshSession(refreshToken: string): Promise<IssuedSession> {
 		let payload;
@@ -163,6 +162,23 @@ export class AuthService {
 		return { user: session.user, session };
 	}
 
+	async updateProfileUser(userId: string, dto: ProfileDto): Promise<{ user: AuthUser }> {
+		const [updated] = await this.db
+			.update(users)
+			.set({
+				...(dto.name !== undefined ? { name: dto.name } : {}),
+				...(dto.surname !== undefined ? { surname: dto.surname } : {}),
+				...(dto.bday !== undefined ? { bday: dto.bday } : {}),
+				updatedAt: new Date(),
+			})
+			.where(eq(users.id, userId))
+			.returning();
+
+		if (!updated) throw new UnauthorizedException('unauthorized');
+
+		return { user: toAuthUser(updated) };
+	}
+
 	/** Opens one row per refresh token; `familyId` ties a whole login session together. */
 	private async issueSession(user: UserRow, familyId: string): Promise<IssuedSession> {
 		const jti = randomUUID();
@@ -211,6 +227,8 @@ function toAuthUser(user: UserRow): AuthUser {
 		id: user.id,
 		email: user.email,
 		name: user.name,
+		surname: user.surname,
+		bday: user.bday,
 		role: user.role,
 		isActive: user.isActive,
 		createdAt: user.createdAt.toISOString(),

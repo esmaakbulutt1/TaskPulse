@@ -1,4 +1,5 @@
-import { boolean, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, pgEnum, pgTable, text, timestamp, uuid, date } from 'drizzle-orm/pg-core';
+
 import { USER_ROLES } from 'shared';
 
 // The role list is declared in shared (frontends need it too) and reused here, so the enum
@@ -10,6 +11,8 @@ export const users = pgTable('users', {
 	email: text('email').notNull().unique(),
 	passwordHash: text('password_hash').notNull(),
 	name: text('name').notNull(),
+	surname: text('surname'),
+	bday: date('bday', { mode: 'string' }),
 	role: userRole('role').notNull().default('user'),
 	// The account switch, not a soft-delete flag: a disabled account fails login with
 	// account_disabled. Users are never removed — rows elsewhere reference this id.

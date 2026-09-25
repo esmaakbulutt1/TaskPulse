@@ -17,7 +17,10 @@ import { StorageModule } from './core/storage/storage.module';
 import { UPLOADS_URL_PREFIX } from './core/storage/storage.service';
 import { AuthModule } from './modules/auth';
 import { ExampleModule } from './modules/example';
+import { NotificationsModule } from './modules/notifications';
+import { TasksModule } from './modules/tasks';
 import { UploadModule } from './modules/uploads';
+import { ScheduleModule } from '@nestjs/schedule';
 
 /**
  * The whole application in one file — this is the NestJS counterpart of a router: every module
@@ -42,6 +45,7 @@ import { UploadModule } from './modules/uploads';
 		StorageModule,
 		RealtimeModule,
 		HealthModule,
+		ScheduleModule.forRoot(),
 
 		WinstonModule.forRootAsync({
 			inject: [ConfigService],
@@ -79,6 +83,8 @@ import { UploadModule } from './modules/uploads';
 		// ---- features (modules) ------------------------------------------------------------
 		AuthModule,
 		ExampleModule,
+		TasksModule,
+		NotificationsModule,
 		UploadModule,
 	],
 	providers: [

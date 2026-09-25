@@ -8,6 +8,8 @@ export interface AuthUser {
 	id: string;
 	email: string;
 	name: string;
+	surname: string | null;
+	bday: string | null;
 	role: UserRole;
 	isActive: boolean;
 	createdAt: string;
@@ -23,6 +25,11 @@ export interface RegisterInput {
 export interface LoginInput {
 	email: string;
 	password: string;
+}
+export interface ProfileInput {
+	name?: string;
+	surname?: string;
+	bday?: string;
 }
 
 export interface ProfileUpdateInput {

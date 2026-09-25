@@ -8,7 +8,7 @@ import { Cookies, GetUser } from '../../core/http/decorators';
 import type { ServiceResponse } from '../../core/http/types';
 import { AuthService, type IssuedSession } from './auth.service';
 import { clearAuthCookies, setAuthCookies } from './common';
-import { LoginDto, RegisterDto, SessionResponseDto, UpdateProfileDto } from './dto';
+import { LoginDto, ProfileDto, RegisterDto, SessionResponseDto, UpdateProfileDto } from './dto';
 import { JwtGuard } from './guard';
 
 /**
@@ -95,6 +95,25 @@ export class AuthController {
 	async updateMe(@GetUser('id') userId: string, @Body() dto: UpdateProfileDto, @Res({ passthrough: true }) res: Response): Promise<ServiceResponse<{ user: AuthUser }>> {
 		const { user, session } = await this.authService.updateOwnProfile(userId, dto);
 		if (session) setAuthCookies(res, session, this.config);
+		return { message: 'Profile updated', data: { user } };
+	}
+	@Get('profile')
+	@UseGuards(JwtGuard)
+	@ApiCookieAuth()
+	@ApiOperation({ summary: 'The signed-in profile' })
+	@ApiResponse({ status: 200, type: SessionResponseDto })
+	async getProfile(@GetUser('id') userId: string): Promise<ServiceResponse<{ user: AuthUser }>> {
+		return { message: 'Profile loaded', data: { user: await this.authService.getProfile(userId) } };
+	}
+
+	@Patch('profile')
+	@UseGuards(JwtGuard)
+	@ApiCookieAuth()
+	@ApiOperation({ summary: 'Update own profile' })
+	@ApiResponse({ status: 200, type: SessionResponseDto })
+	async updateProfile(@GetUser('id') userId: string, @Body() dto: ProfileDto): Promise<ServiceResponse<{ user: AuthUser }>> {
+		const { user } = await this.authService.updateProfileUser(userId, dto);
+
 		return { message: 'Profile updated', data: { user } };
 	}
 

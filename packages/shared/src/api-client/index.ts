@@ -3,6 +3,8 @@ import { createExampleService } from './example.service';
 import { type ApiClientOptions, createRequester } from './http';
 import { createMobileAuthService } from './mobile-auth.service';
 import { createMobileRequester, type MobileApiClientOptions } from './mobile-http';
+import { createNotificationService } from './notification.service';
+import { createTaskService } from './task.service';
 import { createUploadsService } from './uploads.service';
 
 export { ApiError, type ApiClientOptions, type Requester } from './http';
@@ -23,6 +25,8 @@ export function createApiClient(options: ApiClientOptions) {
 	return {
 		auth: createAuthService(requester),
 		examples: createExampleService(requester),
+		notifications: createNotificationService(requester),
+		tasks: createTaskService(requester),
 		uploads: createUploadsService(requester),
 	};
 }
@@ -47,6 +51,8 @@ export function createMobileApiClient(options: MobileApiClientOptions) {
 	return {
 		auth: createMobileAuthService(requester, options.tokens),
 		examples: createExampleService(requester),
+		notifications: createNotificationService(requester),
+		tasks: createTaskService(requester),
 		uploads: createUploadsService(requester),
 	};
 }
