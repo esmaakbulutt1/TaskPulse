@@ -1,368 +1,348 @@
-# nest-drizzle-starter
+# TaskPulse
 
 > 🇬🇧 English: [README.md](README.md)
 
-NestJS + TypeScript + Drizzle (PostgreSQL) API iskeleti. pnpm monorepo: `apps/api` çalışmaya
-hazır, `apps/web` boş — frontend framework'ünü proje başlarken sen seçiyorsun.
+**TaskPulse**, NestJS 11 ve Next.js 16 (React 19) üzerine kurulu; Drizzle ORM (PostgreSQL), gerçek zamanlı WebSocket bildirimleri ve otomatik arka plan zamanlayıcısı (Scheduler) ile donatılmış modern, tam teşekküllü (full-stack) bir görev takip ve bildirim platformudur. Proje bir **pnpm monorepo** olarak yapılandırılmıştır.
 
-Kutudan çıkanlar: iki taşıma üzerinden JWT auth (access + refresh, rotation ve çalınma
-tespitiyle) — tarayıcı için httpOnly cookie, mobil uygulama için Bearer token —, rol guard'ları,
-Swagger dokümantasyonu, görsel yükleme (sharp ile WebP'ye yeniden kodlama), kimlik doğrulayan
-WebSocket gateway, günlük döndürülen dosya logları, geliştirme için sadece Postgres içeren bir
-compose dosyası ve production için Traefik etiketli bir tane.
+---
 
-## Hızlı başlangıç
+## 🚀 Öne Çıkan Özellikler
+
+- **Full-Stack Monorepo**: Tek çatı altında `apps/api` (NestJS REST & WebSocket API), `apps/web` (Next.js 16 App Router frontend) ve `packages/shared` (ortak tipler, sabitler ve tip güvenli API istemcisi).
+- **Gerçek Zamanlı Bildirimler & Scheduler**:
+  - `@nestjs/schedule` ile çalışan Cron zamanlayıcı (`NotificationsScheduler`), süresi gelen görevleri arka planda tespit eder.
+  - PostgreSQL transaction ve benzersiz anahtarlar (`(taskId, type)`) ile mükerrer bildirim ve yarış koşulları (race conditions) engellenir.
+  - Saf WebSocket (`ws://.../ws`) altyapısı ile anlık `task.due` push bildirimleri gönderilir.
+  - Frontend tarafında tarayıcı sesli alarmı (`alarm-sound`), açılır modal pencere (`DueAlertModal`) ve çan ikonu (`NotificationBell`) üzerinde dinamik okunmamış bildirim sayacı.
+- **Görev Yönetimi (Tasks CRUD)**:
+  - Görev oluşturma, listeleme, filtreleme, sayfalama ve detay görüntüleme.
+  - Durum takibi (`pending`, `in_progress`, `completed`) ve yumuşak silme (`is_deleted`).
+- **Gelişmiş Çift Taşımalı JWT Auth**:
+  - **Web için**: XSS açıklarına karşı korumalı `httpOnly` cookie'ler (access token 15 dk, refresh token 30 gün).
+  - **Mobil / Harici API için**: HTTP header'ında taşınan `Bearer` token desteği (`/api/v1/auth/mobile/*`).
+  - Veritabanı kayıtlı token rotasyonu (rotation), token çalınma tespiti (reuse detection) ve 10 saniyelik grace window.
+  - Rol tabanlı yetkilendirme (RBAC: `admin`, `user`).
+- **Modern & Zengin Kullanıcı Deneyimi (Next.js 16)**:
+  - Görevler, Görev Detay, Bildirimler ve Profil sayfaları.
+  - Next.js `middleware.ts` ile otomatik oturum kontrolü ve rota koruma.
+  - Çoklu dil (i18n) desteği: Türkçe (`TR`) ve İngilizce (`EN`) arayüz çevirileri (`LanguageContext`).
+- **Medya & Avatar Yükleme**: Sharp kütüphanesi ile otomatik WebP optimizasyonu ve EXIF (konum/cihaz) verilerinin temizlenmesi.
+- **Gözlemlenebilirlik & Loglama**: Winston ile günlük döndürülen ve sıkıştırılan dosya logları (`app-%DATE%.log`, `error-%DATE%.log`).
+- **Standart API Mimarisi**: Global yanıt dönüştürücü interceptor (`ResponseTransformInterceptor`), global hata yakalayıcı (`AllExceptionsFilter`) ve Swagger (`/api/docs`).
+
+---
+
+## ⚡ Hızlı Başlangıç
+
+### Gereksinimler
+
+- **Node.js** >= 22
+- **pnpm** >= 11 (tercihen v11.9.0)
+- **Docker** & **Docker Compose**
+
+### 1. Kurulum Adımları
 
 ```bash
-cp .env.example .env                              # JWT secret'larını değiştir
+# 1. Ortam değişkenlerini hazırla
+cp .env.example .env
+
+# 2. Bağımlılıkları kur
 pnpm install
-docker compose -f docker-compose.dev.yml up -d    # sadece postgres
-pnpm --filter shared build                        # api, shared'ın dist'ine karşı derleniyor
+
+# 3. Geliştirme veritabanını başlat (sadece PostgreSQL)
+docker compose -f docker-compose.dev.yml up -d
+
+# 4. Shared paketini derle (API ve Web shared paketinin dist çıktısını kullanır)
+pnpm --filter shared build
+
+# 5. Veritabanı tablolarını ve migration'ları uygula
 pnpm --filter api db:migrate
-pnpm dev                                          # api :3000'de
+
+# 6. Geliştirme sunucularını başlat (API :3000 ve Web :3001 paralel çalışır)
+pnpm dev
 ```
 
-İlk kullanıcıyı oluştur:
+### 2. İlk Kullanıcıyı Oluşturma
 
+Sisteme ilk yönetici veya kullanıcıyı iki farklı yoldan ekleyebilirsiniz:
+
+**Yol A: CLI Scripti ile (Hızlı):**
 ```bash
 pnpm --filter api user:create admin@example.com secret123 "Admin" admin
 ```
 
-Kontrol et:
+**Yol B: Web Arayüzü ile:**
+Tarayıcınızda [http://localhost:3001/register](http://localhost:3001/register) adresine giderek doğrudan yeni bir kullanıcı hesabı oluşturabilirsiniz.
+
+### 3. Erişim Noktaları
+
+| Servis | URL | Açıklama |
+| --- | --- | --- |
+| 🌐 **Web Uygulaması** | [http://localhost:3001](http://localhost:3001) | Next.js 16 kullanıcı arayüzü |
+| 📚 **Swagger API Docs** | [http://localhost:3000/api/docs](http://localhost:3000/api/docs) | Etkileşimli REST API dokümantasyonu |
+| 🩺 **Sağlık Kontrolü** | [http://localhost:3000/api/v1/health](http://localhost:3000/api/v1/health) | Veritabanı bağlantı sağlık kontrolü |
+| 🔌 **WebSocket Gateway** | `ws://localhost:3000/ws` | Gerçek zamanlı olay soketi |
+
+---
+
+## 💻 Komutlar
+
+| Komut | Dizin / Kapsam | Açıklama |
+| --- | --- | --- |
+| `pnpm dev` | Kök | `apps/api` ve `apps/web` servislerini paralel başlatır |
+| `pnpm build` | Kök | Tüm paketleri derler (`shared`, `api`, `web`) |
+| `pnpm check` | Kök | Tüm monorepo genelinde TypeScript tip kontrolü yapar |
+| `pnpm lint` | Kök | ESLint kurallarını çalıştırır |
+| `pnpm format` | Kök | Prettier ile tüm kodları formatlar |
+| `pnpm --filter shared build` | packages/shared | Shared paketini TypeScript ile derler (`dist/`) |
+| `pnpm --filter api db:generate` | apps/api | Şema dosyalarından yeni SQL migration'ı üretir |
+| `pnpm --filter api db:migrate` | apps/api | Bekleyen Drizzle migration'larını veritabanına yazar |
+| `pnpm --filter api db:studio` | apps/api | Drizzle Studio veritabanı GUI arayüzünü açar |
+| `pnpm --filter api user:create <email> <şifre> <ad> [rol]` | apps/api | Terminalden hızlıca kullanıcı oluşturur |
+
+---
+
+## 🏛️ Proje Mimarisi ve Dizin Düzeni
+
+```text
+taskPulse/
+├── apps/
+│   ├── api/                     # NestJS 11 Backend Uygulaması
+│   │   ├── src/
+│   │   │   ├── main.ts          # Bootstrap: CORS, Cookie, Pipes, Filters, WS Adapter, Swagger
+│   │   │   ├── app.module.ts    # Uygulama modül orkestrasyonu
+│   │   │   ├── core/            # Uygulama genel altyapı katmanı
+│   │   │   │   ├── config/      # Joi ile env validasyonu & Winston konfigürasyonu
+│   │   │   │   ├── db/          # Drizzle veritabanı modülü, şemalar ve migration'lar
+│   │   │   │   ├── health/      # DB ping sağlık kontrolü endpoint'i
+│   │   │   │   ├── http/        # Guard'lar, Decorator'lar, Filter'lar, Interceptor'lar
+│   │   │   │   ├── realtime/    # EventsGateway (Saf WebSocket sunucusu)
+│   │   │   │   ├── security/    # TokenService (JWT imzalama / doğrulama)
+│   │   │   │   ├── storage/     # StorageService (Sharp ile WebP görsel işleme & disk yönetimi)
+│   │   │   │   └── utils/       # Yardımcı fonksiyonlar (şifreleme, süre parse etme vb.)
+│   │   │   └── modules/         # Ürün / İş mantığı modülleri
+│   │   │       ├── auth/        # Oturum açma, kayıt, cookie & bearer token servisleri
+│   │   │       ├── tasks/       # Görev CRUD, filtreleme, sayfalama ve durum yönetimi
+│   │   │       ├── notifications/# Bildirim yönetimi & NotificationsScheduler (Cron)
+│   │   │       ├── uploads/     # Profil/dosya yükleme endpoint'leri
+│   │   │       └── example/     # Referans başlangıç modülü
+│   │   └── Dockerfile           # API production Docker imajı
+│   │
+│   └── web/                     # Next.js 16 (React 19) Frontend Uygulaması
+│       ├── src/
+│       │   ├── app/             # Next.js App Router sayfaları
+│       │   │   ├── page.tsx     # Ana sayfa / Görev özeti
+│       │   │   ├── register/    # Giriş yap ve Kayıt ol sayfası
+│       │   │   ├── tasks/       # Görev listesi ve yeni görev formu
+│       │   │   ├── tasks/[id]/  # Görev detay, güncelleme ve silme sayfası
+│       │   │   ├── notifications/# Bildirim merkezi ve toplu okundu işaretleme
+│       │   │   └── profile/     # Kullanıcı profil bilgileri ve avatar yükleme
+│       │   ├── components/      # UI Bileşenleri (Navbar, TopBar, DueAlertModal, NotificationBell)
+│       │   ├── context/         # React Context (LanguageContext: TR / EN)
+│       │   ├── constants/       # Arayüz sabitleri ve çeviri sözlükleri (ui.ts, ui.en.ts)
+│       │   ├── hooks/           # Özel hook'lar (useTaskDueSocket)
+│       │   ├── lib/             # API istemcisi, Web Audio alarmı (alarm-sound), formatlayıcılar
+│       │   └── middleware.ts    # Sayfa erişim ve oturum kontrolü middleware'i
+│       └── .env.local           # Web ortam değişkenleri (NEXT_PUBLIC_API_URL, NEXT_PUBLIC_WS_URL)
+│
+├── packages/
+│   └── shared/                  # Ortak Sözleşme Kütüphanesi
+│       ├── src/
+│       │   ├── api-client/      # createApiClient (Web cookie) & createMobileApiClient (Bearer)
+│       │   ├── constants/       # TASK_STATUSES, NOTIFICATION_TYPES, USER_ROLES vb.
+│       │   └── types/           # Task, Notification, User, ApiResponse arayüzleri
+│       └── package.json
+│
+├── docker-compose.dev.yml       # Geliştirme için PostgreSQL konteyneri
+├── docker-compose.yml           # Canlı ortam (Traefik + API + Postgres) konfigürasyonu
+└── pnpm-workspace.yaml          # pnpm monorepo tanımı
+```
+
+### İki Temel Mimari Kural
+
+1. **Modüller birbirine sadece `index.ts` üzerinden ulaşır**: `modules/tasks/` altından `modules/auth/auth.service` dosya yolu doğrudan import edilmez; `modules/auth` barrel dosyası kullanılır.
+2. **`core` hiçbir modüle bağlı değildir**: `core` katmanı iş modüllerinden tamamen bağımsızdır; genel altyapı hizmeti sunar.
+
+---
+
+## 🔔 Görev & Gerçek Zamanlı Bildirim Mekanizması
+
+Uygulamanın kalbini oluşturan görev zamanı takibi ve anlık bildirim akışı şu şekilde işler:
+
+```text
+[Kullanıcı] -> Görev Oluşturur (dueAt: Belirlenen Zaman)
+                      │
+                      ▼ (Her saniye)
+       [NotificationsScheduler (Cron)]
+                      │
+   dueAt <= ŞİMDİ && status != 'completed' && reminderSentAt == null
+                      │
+                      ▼ (Veritabanı Transaction'ı)
+     ┌──────────────────────────────────────────────────────────┐
+     │ 1. tasks tablosunda reminderSentAt = NOW güncellenir     │
+     │ 2. notifications tablosuna 'task_due' kaydı eklenir      │
+     └──────────────────────────────────────────────────────────┘
+                      │
+                      ▼ (WebSocket)
+             [EventsGateway.sendToUser]
+                      │
+                      ▼ 'task.due' Eventi
+       [Next.js Client: useTaskDueSocket]
+                      │
+     ┌────────────────┴─────────────────────────────────────────┐
+     │ 🔊 playAlarmSound() -> Tarayıcıda sesli uyarı çalar      │
+     │ 💬 DueAlertModal    -> Ekranda açılır bildirim penceresi │
+     │ 🔔 NotificationBell -> Okunmamış sayaç rozeti artar      │
+     └──────────────────────────────────────────────────────────┘
+                      │
+                      ▼ (Bildirime tıklandığında)
+     [PATCH /api/v1/notifications/:id/read] -> Görev Detayına Yönlendirme (/tasks/:id)
+```
+
+1. **Planlama**: Kullanıcı yeni bir görev oluştururken bir son teslim / hatırlatıcı tarihi (`dueAt`) belirler.
+2. **Zamanlayıcı (Scheduler)**: `apps/api/src/modules/notifications/notifications.scheduler.ts` içinde tanımlı `@Cron(CronExpression.EVERY_SECOND)` her saniye arka planda tetiklenir.
+3. **Yarış Koşulu Koruması & Atomik Claim**: Aynı göreve mükerrer bildirim gitmesini engellemek için işlem bir PostgreSQL transaction'ı içinde yürütülür; `reminderSentAt` kolonu atanır ve `(taskId, type)` unique kısıtı ile bildirim satırı üretilir.
+4. **WebSocket İletimi**: `EventsGateway` üzerinden hedeflenen kullanıcının açık soketine `task.due` tipinde veri fırlatılır.
+5. **Arayüz Tepkisi**:
+   - `useTaskDueSocket` hook'u gelen veriyi yakalar.
+   - Web Audio API ile kullanıcıya sesli bir alarm (`playAlarmSound`) dinletilir.
+   - `DueAlertModal` açılarak kullanıcının dikkatine sunulur.
+   - Çan ikonundaki rozet (`NotificationBell`) anında güncellenir.
+6. **Okundu Durumu**: Kullanıcı bildirime tıkladığında bildirim okundu olarak işaretlenir ve doğrudan ilgili görevin detay sayfasına yönlendirilir.
+
+---
+
+## 🔐 Kimlik Doğrulama & Güvenlik Mimarisi
+
+TaskPulse, iki farklı istemci türü için optimize edilmiş çift taşımalı JWT mimarisi kullanır:
+
+### 1. Web İstemcisi (Tarayıcı Güvenliği)
+- **Token'lar response body'sinde ASLA bulunmaz.**
+- Tarayıcının JavaScript ile erişemeyeceği `httpOnly`, `SameSite=Lax`, `Secure` cookie'lerde saklanır (`access_token` ve `refresh_token`). Böylece XSS saldırılarında oturum token'ları çalınamaz.
+- Access token 15 dakika, refresh token 30 gün geçerlidir.
+
+### 2. Mobil & Harici API İstemcisi
+- Cookie desteği olmayan istemciler için `/api/v1/auth/mobile/*` endpoint ailesi mevcuttur.
+- Giriş ve refresh isteklerinde token'lar doğrudan JSON yanıt gövdesinde (`{ accessToken, refreshToken }`) döner ve `Authorization: Bearer <token>` başlığıyla taşınır.
+
+### 3. Token Rotasyonu & Yeniden Kullanım Tespiti (Reuse Detection)
+- Her token yenileme (`refresh`) isteğinde mevcut refresh token veritabanında yakılır (`used_at`) ve yeni bir çift üretilir.
+- Kullanılmış bir refresh token tekrar gönderilirse, sistem çalınma şüphesiyle o token ailesine (`family_id`) ait **bütün oturumları anında iptal eder**.
+- Ağ gecikmeleri ve paralel sekmelerden doğabilecek yarış koşullarını tolere etmek için 10 saniyelik bir *grace window* bulunur.
+
+---
+
+## 📡 API Endpoint Özeti
+
+Tüm iş istekleri `/api/v1` ön eki ile servis edilir (statik yüklemeler hariç):
+
+### Kimlik Doğrulama (`/api/v1/auth`)
+- `POST /api/v1/auth/register` — Yeni kullanıcı kaydı (Cookie)
+- `POST /api/v1/auth/login` — Kullanıcı girişi (Cookie)
+- `POST /api/v1/auth/refresh` — Access token yenileme (Cookie rotasyonu)
+- `POST /api/v1/auth/logout` — Çıkış yapma ve token ailesini iptal etme
+- `GET /api/v1/auth/me` — Giriş yapmış kullanıcının profil bilgileri
+- `PATCH /api/v1/auth/me` — Profil güncelleme (ad, soyad, doğum tarihi)
+- `POST /api/v1/auth/mobile/*` — Mobil/Bearer tabanlı auth varyantları
+
+### Görevler (`/api/v1/tasks`)
+- `GET /api/v1/tasks` — Kendi görevlerini sayfalı ve filtreli listeleme (`page`, `limit`, `status`, `search`)
+- `POST /api/v1/tasks` — Yeni görev oluşturma (`title`, `description`, `dueAt`)
+- `GET /api/v1/tasks/:id` — Görev detayını getirme
+- `PATCH /api/v1/tasks/:id` — Görev güncelleme (başlık, açıklama, durum, tarih)
+- `DELETE /api/v1/tasks/:id` — Görevi yumuşak silme (`is_deleted = true`)
+
+### Bildirimler (`/api/v1/notifications`)
+- `GET /api/v1/notifications` — Sayfalı bildirim listesi
+- `GET /api/v1/notifications/unread-count` — Okunmamış bildirim adedi
+- `PATCH /api/v1/notifications/:id/read` — Tekil bildirimi okundu işaretleme
+- `PATCH /api/v1/notifications/read-all` — Tüm bildirimleri toplu okundu işaretleme
+
+### Medya Yükleme (`/api/v1/uploads`)
+- `POST /api/v1/uploads/image` — Multipart resim yükleme (Sharp ile WebP'ye dönüştürülür)
+- Dosyalar `/api/uploads/:userId/:filename` adresinden statik olarak sunulur.
+
+---
+
+## 🗄️ Veritabanı ve Drizzle ORM
+
+Şemalar `apps/api/src/core/db/schema/` altında modüler olarak yer alır:
+- `users`: Kullanıcı hesapları, şifre hash'leri, profil bilgileri ve roller.
+- `tasks`: Görev bilgileri, durum enum'ı (`pending`, `in_progress`, `completed`), son tarih (`due_at`) ve `reminder_sent_at`.
+- `notifications`: Üretilen bildirimler, `task_id` ilişkisi, okunma zamanı (`read_at`) ve tip (`task_due`).
+- `refresh_tokens`: Oturum takibi, rotasyon zinciri ve token aileleri (`family_id`).
+
+### Migration Akışı
 
 ```bash
-curl localhost:3000/api/v1/health
-curl -c cookies.txt -X POST localhost:3000/api/v1/auth/login \
-  -H 'content-type: application/json' \
-  -d '{"email":"admin@example.com","password":"secret123"}'
-curl -b cookies.txt localhost:3000/api/v1/auth/me
+# 1. apps/api/src/core/db/schema/ altında bir dosyayı düzenle
+# 2. SQL migration dosyasını otomatik üret:
+pnpm --filter api db:generate
+
+# 3. Migration'ı veritabanına uygula:
+pnpm --filter api db:migrate
+
+# 4. Veritabanını görsel arayüzde incelemek için:
+pnpm --filter api db:studio
 ```
 
-Aynı şeyin mobil hâli — token'lar body'de geliyor, sonra Bearer header'ı:
+---
+
+## 📦 Shared Paketi ve API İstemcisi
+
+`packages/shared` paketi, Next.js frontend ve NestJS backend arasındaki tip uyuşmazlıklarını sıfıra indirir:
+- **Sabitler ve Tipler**: `TASK_STATUSES`, `NOTIFICATION_TYPES`, `USER_ROLES` gibi sabitler her iki tarafta da aynı kaynaktan tüketilir.
+- **Tek Merkezli API İstemcisi (`api.ts`)**:
+  - `createApiClient`: Next.js tarafında `credentials: 'include'` ile otomatik cookie iletimi yapar.
+  - Bir istek `401 Unauthorized` aldığında, kuyruk mantığıyla tek seferlik (*single-flight*) arka plan token yenileme isteği gerçekleştirir ve orijinal isteği otomatik yineler.
+
+---
+
+## 🌐 Çoklu Dil Desteği (i18n)
+
+TaskPulse web arayüzü tam yerelleştirme desteği sunar:
+- `apps/web/src/context/language-context.tsx`: Oturum boyunca seçilen dili (`tr` veya `en`) tarayıcıda hatırlar.
+- `apps/web/src/constants/ui.ts` & `ui.en.ts`: Butonlardan modal metinlerine, hata mesajlarından bildirim başlıklarına kadar tüm metinler iki dilde eksiksiz tanımlanmıştır.
+
+---
+
+## 🚢 Canlı Ortam (Production) Dağıtımı
+
+Canlı ortam kurulumu `docker-compose.yml` dosyası üzerinden yürütülür. Sistem, önünde çalışan ve `traefik-net` harici ağına sahip bir Traefik reverse proxy varsayımıyla kurgulanmıştır:
 
 ```bash
-curl -X POST localhost:3000/api/v1/auth/mobile/login \
-  -H 'content-type: application/json' \
-  -d '{"email":"admin@example.com","password":"secret123"}'
-curl -H "Authorization: Bearer <accessToken>" localhost:3000/api/v1/auth/me
-```
+# 1. Gerçek production değişkenlerini ayarla
+cp .env.example .env
 
-Etkileşimli API dokümantasyonu: <http://localhost:3000/api/docs> (sadece development).
-
-## Komutlar
-
-| Komut                                                      | Nerede | Ne yapar                                          |
-| ---------------------------------------------------------- | ------ | ------------------------------------------------- |
-| `pnpm dev`                                                 | kök    | `dev` script'i olan her paketi paralel çalıştırır |
-| `pnpm build` / `pnpm check` / `pnpm lint`                  | kök    | her paketi derler / tip kontrolü / lint           |
-| `pnpm --filter api db:generate`                            | api    | şemadan migration üretir                          |
-| `pnpm --filter api db:migrate`                             | api    | bekleyen migration'ları uygular                   |
-| `pnpm --filter api db:studio`                              | api    | Drizzle Studio'yu açar                            |
-| `pnpm --filter api user:create <email> <şifre> <ad> [rol]` | api    | kullanıcı oluşturur                               |
-
-## Yerleşim
-
-```
-apps/api/src/
-├─ main.ts           bootstrap: pipe, filter, interceptor, cors, cookie, swagger, ws adapter
-├─ app.module.ts     TÜM modüller tek dosyada — NestJS'te router'ın karşılığı
-├─ core/             MODÜLE ÖZGÜ HİÇBİR ŞEY BURADA DURMAZ
-│  ├─ config/        env.validation.ts (Joi — hatalı deploy açılışta patlar), winston.config.ts
-│  ├─ db/            drizzle.module.ts (DRIZZLE token'ı), schema/, migrations/, migrate.ts
-│  ├─ health/        gerçekten veritabanına giden sağlık kontrolü
-│  ├─ http/          decorator, dto, filter, guard, interceptor, middleware, pipe, type
-│  ├─ realtime/      WebSocket gateway
-│  ├─ security/      token.service.ts — JWT imzalama/doğrulama
-│  ├─ storage/       diske dokunan TEK sınıf
-│  └─ utils/         password, duration
-└─ modules/          ürün kodu: auth/ example/ uploads/
-packages/shared/src/ sabitler + tipler + api-client — frontend ile paylaşılan sözleşme
-```
-
-### İki kural (bozma)
-
-1. **Modüller birbirine sadece `index.ts` üzerinden ulaşır.** `modules/x/` içinden
-   `modules/y/y.service` import edilmez, `modules/y` import edilir.
-2. **`core` hiçbir modüle bağlı değildir.** core'daki bir dosyanın modüle ihtiyacı varsa tasarım
-   yanlıştır (token imzalamak core'un, login endpoint'i modülün işidir).
-
-### Modül iskeleti
-
-```
-modules/<ad>/
-├─ <ad>.service.ts             DB ile konuşan TEK katman
-├─ <ad>.controller.ts          HTTP yüzeyi: içeri DTO, dışarı ServiceResponse
-├─ public-<ad>.controller.ts   (opsiyonel) aynı modülün kimliksiz yüzeyi
-├─ dto/                        class-validator + @ApiProperty — Swagger bunlardan üretiliyor
-├─ <ad>.module.ts              bağlantılar
-└─ index.ts                    modülün public API'si
-```
-
-Yeni modül = `modules/example/`'ı kopyala, `app.module.ts`'e bir import ve bir satır ekle.
-
-## Response şekli
-
-Her başarılı yanıt aynı zarfla çıkar; zarfı `ResponseTransformInterceptor` ekler — controller
-sadece `{ message, data?, meta? }` döndürür:
-
-```json
-{ "success": true, "message": "Signed in", "data": {}, "timestamp": "2026-08-07T07:48:29.362Z" }
-```
-
-Hatalar bunun yerine `AllExceptionsFilter`'dan geçer. `error`, client'ın switch'lediği ve
-çevirdiği stabil bir KOD'dur; serbest metin `details`'a gider:
-
-```json
-{ "success": false, "error": "invalid_credentials", "statusCode": 401, "timestamp": "…" }
-{ "success": false, "error": "validation_error", "statusCode": 400,
-  "details": ["email must be an email"], "timestamp": "…" }
-```
-
-500 mesajını asla sızdırmaz — gerçek sebep aynı timestamp ile loga düşer.
-
-## Veritabanı
-
-Tablolar `apps/api/src/core/db/schema/` altında, dosya başına bir tablo; `index.ts` hepsini
-yeniden export eder ve `drizzle.config.ts`'in giriş noktasıdır — bu barrel'da olmayan bir tablo
-`db:generate` açısından yok demektir.
-
-SQL asla elle yazılmaz:
-
-```bash
-# 1. schema/<tablo>.ts yaz ya da düzenle, index.ts'e ekle
-pnpm --filter api db:generate    # 2. SQL + meta snapshot üretilir
-pnpm --filter api db:migrate     # 3. uygulanır
-```
-
-Migration'lar sıralıdır, atlanmaz ve geri alınmaz — geri dönüş yeni bir migration'la olur.
-Uygulamadan önce üretilen `.sql`'i oku: Drizzle bir kolon yeniden adlandırmasını bazen "drop +
-add" olarak çözer, bu da veri kaybıdır.
-
-Servisler client'ı `@Inject(DRIZZLE) private readonly db: Database` ile enjekte eder.
-
-Satırı silmek yerine yumuşak silmeyi (`is_deleted`) tercih et; böylece geçmiş ve o satıra referans
-veren kayıtlar hayatta kalır. Bunu `is_active`'ten ayrı tut: o, kullanıcıya görünen bir anahtardır
-(kapatılmış hesap, duraklatılmış satır) — ikisine birden ihtiyaç duyan tablo iki kolonu da taşır.
-
-## Auth
-
-Tek kullanıcı evreni (`users` tablosu), yetki `role` ile ayrılıyor. Web yüzeyinde **token'lar
-response body'sinde asla yok** — tarayıcının okuyamadığı httpOnly cookie'lerdeler, yani bir XSS
-açığı oturumu alıp götüremez. Access token 15 dakika, refresh token 30 gün yaşar ve **veritabanında
-takip edilir**:
-
-- Her refresh rotate eder: eski satır `used_at` ile yakılır, yeni satır açılır.
-- Harcandıktan sonra geri gelen bir token çalınmış sayılır ve `family_id`'sindeki bütün
-  token'lar iptal edilir. 10 saniyelik grace penceresi, yarışların (kopan bağlantı, ikinci
-  sekme) hırsızlık sanılmasını engeller.
-- Logout bütün aileyi iptal eder; şifre değişimi kullanıcının TÜM token'larını iptal eder ama
-  isteği yapan sekmeye taze bir çift verir.
-
-Bu deseni bozma: refresh endpoint'ini cache'lemek ya da otomatik retry'a bağlamak reuse
-detection'ı yanlış sebeple tetikler.
-
-Endpoint'ler: `POST /api/v1/auth/{register,login,refresh,logout}`,
-`GET|PATCH /api/v1/auth/me`. Açık kayıt istemiyorsan `auth.controller.ts`'ten (ve
-`mobile-auth.controller.ts`'ten) `register` handler'ını sil ve kullanıcıları `user:create` ile
-ekle.
-
-### Mobil
-
-Cihazın cookie jar'ı yok, o yüzden `mobile-auth.controller.ts` aynı oturumu farklı bir taşımayla
-sunuyor: `POST /api/v1/auth/mobile/{register,login,refresh,logout}` ve
-`PATCH /api/v1/auth/mobile/me` çifti body'de döndürür, uygulama da saklar — **refresh token'ın
-yeri Keychain / Keystore'dur**, düz storage değil. `refresh` ve `logout` cookie okumak yerine
-body'den `{ "refreshToken": "…" }` alır.
-
-Taşımanın arkasında hiçbir şey farklı değil: tek `AuthService`, tek `refresh_tokens` tablosu,
-aynı rotation ve reuse detection. Korumalı endpoint'ler iki kitleye birden hizmet ediyor, çünkü
-`JwtStrategy` access token'ı önce cookie'den, sonra `Authorization: Bearer` header'ından okuyor
-— `GET /api/v1/auth/me`'nin mobil ikizinin olmamasının sebebi bu.
-
-Bir route'u korumak:
-
-```ts
-@UseGuards(JwtGuard)                    // oturum gerekir
-@UseGuards(JwtGuard, RolesGuard)        // …ve rol
-@Roles('admin')
-```
-
-`@GetUser('id')` çağıranın id'sini, `@GetUser()` bütün `AuthContext`'i verir.
-
-## Upload
-
-`POST /api/v1/uploads/image` (oturum gerekir, multipart alan adı `file`) görseli sharp ile
-WebP'ye çevirir, `<UPLOAD_DIR>/<userId>/` altına yazar ve public bir URL döner. Yeniden kodlama
-EXIF'i (konum verisi!) siler ve byte'ların gerçekten bir görsel olduğunu garanti eder.
-
-Diske dokunan tek sınıf `core/storage/storage.service.ts` — S3'e geçmek sadece o dosyayı
-değiştirmek olmalı. Servis edilen URL (`/api/uploads/...`) bilerek `/api/v1` prefix'inin
-DIŞINDA: o URL'ler veritabanında duruyor ve API sürümü değişince yerinden oynamamalı.
-
-**Production'da `uploads` volume'ünü yedeklemek `pgdata` kadar önemli: o dosyalar veritabanı
-dump'ında yok.**
-
-## Realtime
-
-`ws://…/ws` — ham `ws`, client kütüphanesi gerekmiyor. Tarayıcı auth cookie'sini handshake'te
-kendisi gönderir, dolayısıyla join mesajı yok. Mobil client ne cookie ne header gönderebiliyor,
-o yüzden ACCESS token'ı ekliyor: `ws://…/ws?token=<accessToken>` (refresh token asla — URL proxy
-loglarına düşer). Kimliksiz socket 1008 koduyla kapatılır.
-
-Herhangi bir servisten kullanıcıya push: `EventsGateway`'i enjekte et ve
-`sendToUser(userId, type, data)` çağır. State bellekte, yani TEK API instance varsayılıyor —
-ölçeklemek önce o metodun arkasına Redis pub/sub koymak demek.
-
-## Loglar
-
-Winston, `apps/api/logs/` altına günlük döndürerek yazar: `app-%DATE%.log` (info ve üstü) ve
-`error-%DATE%.log`, 15 gün, gzip'li. Development'ta okunaklı bir console transport eklenir;
-production'da stdout JSON kalır ki `docker logs` ve herhangi bir toplayıcı parse edebilsin.
-
-`HttpLoggerMiddleware` başarılı istekleri loglar (3 saniyeyi geçeni `SLOW` diye işaretler);
-`AllExceptionsFilter` hataları tam bağlamıyla loglar — böylece hiçbir şey iki kez yazılmaz.
-
-## Frontend eklemek
-
-`apps/web` boş. İçine bir framework kur, `package.json`'ına `"name": "web"` ve bir `dev`
-script'i ver — kökteki `pnpm dev` (`pnpm --parallel -r dev`) onu kendiliğinden yakalar.
-
-Örnek (React + Vite):
-
-```bash
-cd apps/web && pnpm create vite@latest . -- --template react-ts
-pnpm add shared@workspace:*
-```
-
-`vite.config.ts`'e proxy ekle ki tarayıcı TEK origin görsün — o zaman auth cookie'leri hiçbir
-CORS ayarı olmadan gider:
-
-```ts
-server: {
-  proxy: {
-    "/api": "http://localhost:3000",
-    "/ws": { target: "ws://localhost:3000", ws: true }
-  }
-}
-```
-
-Sonra `shared`'daki client'ı kullan:
-
-```ts
-import { createApiClient } from "shared";
-
-const api = createApiClient({ baseUrl: "", onSessionExpired: () => navigate("/login") });
-await api.auth.login({ email, password }); // cookie'leri sunucu set ediyor
-const { items, meta } = await api.examples.list({ page: 1 });
-```
-
-Client her çağrıda `credentials: "include"` gönderir ve bir istek 401 dönerse tek seferlik
-(single-flight) refresh yapar — bu mantığı bir daha yazmıyorsun.
-
-Mobil uygulama için `createMobileApiClient` aynı client'ın Bearer token'lı hâli. Senden tek
-istediği, çifti nerede saklayacağı:
-
-```ts
-import { createMobileApiClient } from "shared";
-
-const api = createMobileApiClient({
-  baseUrl: "https://api.example.com",
-  tokens: {
-    read: () => readFromSecureStore(),
-    write: (pair) => writeToSecureStore(pair),
-  },
-  onSessionExpired: () => navigation.reset({ routes: [{ name: "SignIn" }] }),
-});
-
-await api.auth.login({ email, password }); // çifti senin yerine saklıyor
-const { items, meta } = await api.examples.list({ page: 1 });
-```
-
-Auth dışındaki her servis iki client'ta da birebir aynı kod — bir kaynak servisi oturumun nasıl
-taşındığını zaten hiç bilmiyordu.
-
-Frontend API'den farklı bir origin'de çalışıyorsa o origin'i `CORS_ORIGIN`'e yaz; tarayıcılar
-credential'lı istekleri wildcard'a karşı reddeder, bu yüzden boş değer "sadece aynı origin"
-demektir.
-
-Birden fazla frontend gerekiyorsa (mesela `apps/admin`) aynı deseni kopyala: yeni klasör, farklı
-port, `docker-compose.yml`'de yeni servis ve yeni Traefik router.
-
-## Production deploy
-
-`docker-compose.yml`, VPS'te zaten çalışan ve dışarıdaki `traefik-net` ağının sahibi olan bir
-Traefik instance'ı varsayar — Traefik'i kendisi başlatmaz. Entrypoint `https`, cert resolver
-`letsencrypt`; seninkiler farklı adlandırılmışsa etiketleri değiştir.
-
-```bash
-cp .env.example .env      # DOMAIN, DB_*, JWT_* → gerçek değerler
+# 2. Servisleri derle ve arka planda ayağa kaldır
 docker compose up -d --build
+
+# 3. Canlı veritabanı migration'larını çalıştır
 docker compose exec api node dist/core/db/migrate.js
 ```
 
-Postgres yalnızca `internal` ağında; ne dış dünya ne de Traefik ona ulaşabilir. Yüklenen
-dosyalar `uploads` volume'ünde kalıcıdır. `NODE_ENV=production` iken Swagger kapalıdır — şema
-her endpoint'in ve her alan adının haritasıdır.
+- PostgreSQL veritabanı sadece `internal` ağındadır, dış dünyaya kapalıdır.
+- Medya yüklemeleri kalıcı bir Docker volume'ünde (`uploads:/app/uploads`) korunur.
+- Canlı ortamda `NODE_ENV=production` olduğunda Swagger arayüzü güvenlik amacıyla otomatik olarak devre dışı bırakılır.
 
-## Commit'ler
+---
 
-Conventional Commits — `<tip>(<kapsam>): <konu>`. Küçük harf, emir kipi ve İngilizce ("add",
-"added" değil), sonda nokta yok, ~72 karakteri geçmesin.
+## 📝 Commit Standartları
 
-| Tip        | Ne zaman                                                          |
-| ---------- | ----------------------------------------------------------------- |
-| `feat`     | yeni endpoint, modül, sayfa ya da kullanıcıya görünen bir yetenek |
-| `fix`      | zaten çalışan bir şeydeki hata                                    |
-| `docs`     | README, CLAUDE.md, yorumlar                                       |
-| `refactor` | davranış aynı, kod farklı                                         |
-| `chore`    | bağımlılık, config, araç gereç, ölü kod silme                     |
-| `build`    | Dockerfile, compose, tsconfig — build'in kendisi                  |
-| `test`     | sadece test                                                       |
-| `style`    | sadece biçim, mantık yok (prettier çalıştırmak)                   |
-| `perf`     | hız için yapılan değişiklik                                       |
+Projeye yapılan katkılarda **Conventional Commits** kuralına uyulur:
+`<tip>(<kapsam>): <açıklama>`
 
-Kapsam, commit'in dokunduğu yer: `api`, `web`, `shared`, `db` — ya da daha darsa modül adı:
-`notes`, `auth`, `uploads`.
+- `feat`: Yeni bir özellik, endpoint veya sayfa ekleme
+- `fix`: Hata giderme
+- `docs`: Dokümantasyon güncellemeleri
+- `refactor`: Davranış değiştirmeyen kod iyileştirmeleri
+- `style`: Kod formatı, Prettier düzenlemeleri
+- `chore`: Paket bağımlılıkları veya konfigürasyon değişiklikleri
 
+*Örnekler:*
+```text
+feat(tasks): add status filter to list query
+feat(notifications): trigger alarm sound on task.due socket event
+fix(auth): clear refresh token cookie on proper path
+docs: update README with TaskPulse features and scheduler details
 ```
-feat(notes): add the notes module with CRUD endpoints
-feat(db): add notes table and note_color enum
-feat(shared): add note types, constants and api-client service
-feat(web): add the /notes route
-fix(notes): stop a title-only PATCH from resetting the colour
-fix(auth): clear the refresh cookie on the path it was set on
-chore: remove the example module
-chore(deps): bump drizzle-orm to 0.45.2
-docs: rewrite the README for the practice-apps layout
-build(docker): pin the postgres image to 16.4
-```
-
-Yeni bir uygulama tek commit değil, birkaç commit olarak iniyor — shared sözleşmesi, tablo ve
-migration, modül, frontend route'u. Her biri kendi başına build olmalı.
-
-## AI araçlarıyla çalışmak (CLAUDE.md)
-
-Repo kökündeki [CLAUDE.md](CLAUDE.md) bu iskeletin kurallarını — modül sınırları, response
-zarfı, migration akışı, refresh token deseni — makine tarafından okunacak biçimde tutar.
-[CLAUDE.TR.md](CLAUDE.TR.md) insan okuru için Türkçe çeviridir; araçlar `CLAUDE.md`'yi okur, o
-yüzden kurallar değişince ikisini birden güncelle.
-
-- **Claude Code kullanıyorsan?** Yapacak bir şey yok: dosya her oturumda otomatik yükleniyor.
-- **Başka bir şey kullanıyorsan?** (Cursor, Copilot, Codex, Gemini…) Dosya kendiliğinden
-  alınmaz. İçeriğini o aracın kendi kural dosyasına kopyala — `.cursor/rules/`,
-  `.github/copilot-instructions.md`, `AGENTS.md`, `GEMINI.md`, neyse. `CLAUDE.md`'ye referans
-  vermek yerine metni kopyala; çoğu araç sadece adını andığın bir dosyayı açmaz.
-- **Hiç AI kullanmıyorsan?** Yine de oku: iskeletin neden böyle kurulduğunun en kısa açıklaması.
-
-## Kendine göre uyarla
-
-- [ ] Proje adını `package.json` ve `docker-compose.yml` içinde değiştir (`name: app`,
-      `container_name: app_*`, `traefik.http.routers.app-*`)
-- [ ] `.env`'e gerçek bir `DOMAIN` ve rastgele JWT secret'ları koy (`openssl rand -hex 32`)
-- [ ] `modules/example/`, `schema/examples.ts`, `constants/example.ts`, `types/example.ts`,
-      `api-client/example.service.ts` → sil ya da ilk gerçek modülüne dönüştür
-- [ ] İhtiyacın yoksa `core/realtime/` (WebSocket) ya da `core/storage/` + `modules/uploads/`
-      klasörlerini sil
-- [ ] `apps/web`'e bir framework kur, compose dosyasındaki `web` servisini yorumdan çıkar
-- [ ] `main.ts`'teki Swagger başlığını ve açıklamasını ayarla
-- [ ] Claude Code dışında bir AI aracı kullanıyorsan `CLAUDE.md`'yi onun kural dosyasına kopyala

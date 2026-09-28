@@ -1,370 +1,305 @@
-# nest-drizzle-starter
+# TaskPulse
 
 > 🇹🇷 Bu dosyanın Türkçesi: [README-TR.md](README-TR.md)
 
-A NestJS + TypeScript + Drizzle (PostgreSQL) API skeleton. A pnpm monorepo: `apps/api` is
-ready to run, `apps/web` is empty — you pick the frontend framework when the project starts.
+**TaskPulse** is a modern, full-stack Task Management and Real-Time Notification platform built with NestJS 11, Next.js 16 (React 19), Drizzle ORM (PostgreSQL), and raw WebSockets with an automated background scheduler. The repository is structured as a clean **pnpm monorepo**.
 
-What comes with it: JWT auth (access + refresh, with rotation and reuse detection) over two
-transports — httpOnly cookies for the browser, Bearer tokens for a mobile app — role guards,
-Swagger docs, image uploads (re-encoded to WebP by sharp), an authenticated WebSocket gateway,
-rotating file logs, a Postgres-only compose file for development and a Traefik-labelled one for
-production.
+---
 
-## Quick start
+## 🚀 Key Features
+
+- **Full-Stack Monorepo**: Housing `apps/api` (NestJS REST & WebSocket API), `apps/web` (Next.js 16 App Router UI), and `packages/shared` (shared contracts, constants, types, and unified API client).
+- **Real-Time Notifications & Background Scheduler**:
+  - `@nestjs/schedule` cron scheduler (`NotificationsScheduler`) checks for due tasks every second.
+  - PostgreSQL transaction with unique constraints (`(taskId, type)`) prevents duplicate notifications and handles race conditions safely.
+  - Raw WebSocket (`ws://.../ws`) delivers instant `task.due` push alerts directly to the user's active session.
+  - Client-side Web Audio API alarm sound (`alarm-sound`), interactive modal popup (`DueAlertModal`), and real-time unread badge counter (`NotificationBell`).
+- **Task Management (Tasks CRUD)**:
+  - Create, list, paginate, filter, inspect, and update tasks.
+  - Status lifecycle management (`pending`, `in_progress`, `completed`) and soft deletes (`is_deleted`).
+- **Dual-Transport JWT Authentication**:
+  - **Web Client**: Secure `httpOnly`, `SameSite=Lax`, `Secure` cookies immune to XSS token theft (access token: 15 min, refresh token: 30 days).
+  - **Mobile / External API Client**: Standard `Bearer` token header transport (`/api/v1/auth/mobile/*`).
+  - Database-tracked token rotation, family-wide revocation on reuse detection, and a 10-second grace period for network races.
+  - Role-based access control (RBAC: `admin`, `user`).
+- **Modern Next.js 16 UI**:
+  - Dedicated pages for Tasks, Task Details, Notifications, and Profile.
+  - Route protection via Next.js `middleware.ts`.
+  - Multi-language (i18n) support: Turkish (`TR`) and English (`EN`) through `LanguageContext`.
+- **Media & Avatar Uploads**: Automated WebP re-encoding and EXIF metadata stripping via Sharp.
+- **Observability & Logging**: Daily rotating and compressed log files using Winston (`app-%DATE%.log`, `error-%DATE%.log`).
+- **Standardized API Envelope**: Unified response interceptor (`ResponseTransformInterceptor`), exception filter (`AllExceptionsFilter`), and interactive Swagger UI (`/api/docs`).
+
+---
+
+## ⚡ Quick Start
+
+### Prerequisites
+
+- **Node.js** >= 22
+- **pnpm** >= 11 (v11.9.0 recommended)
+- **Docker** & **Docker Compose**
+
+### 1. Setup Instructions
 
 ```bash
-cp .env.example .env                              # change the JWT secrets
+# 1. Prepare environment variables
+cp .env.example .env
+
+# 2. Install all dependencies across the monorepo
 pnpm install
-docker compose -f docker-compose.dev.yml up -d    # postgres only
-pnpm --filter shared build                        # api compiles against shared's dist
+
+# 3. Spin up the development database (PostgreSQL only)
+docker compose -f docker-compose.dev.yml up -d
+
+# 4. Build the shared package (api & web build against shared's dist)
+pnpm --filter shared build
+
+# 5. Apply database migrations
 pnpm --filter api db:migrate
-pnpm dev                                          # api on :3000
+
+# 6. Start development servers (runs api on :3000 and web on :3001 in parallel)
+pnpm dev
 ```
 
-Create the first user:
+### 2. Creating the Initial User
 
+You can create an initial administrator or user in two ways:
+
+**Option A: Via CLI Script:**
 ```bash
 pnpm --filter api user:create admin@example.com secret123 "Admin" admin
 ```
 
-Check it:
+**Option B: Via Web UI:**
+Visit [http://localhost:3001/register](http://localhost:3001/register) directly in your browser to sign up.
+
+### 3. Service Access Points
+
+| Service | URL | Description |
+| --- | --- | --- |
+| 🌐 **Web Application** | [http://localhost:3001](http://localhost:3001) | Next.js 16 front-end |
+| 📚 **Swagger API Docs** | [http://localhost:3000/api/docs](http://localhost:3000/api/docs) | Interactive API documentation (dev only) |
+| 🩺 **Health Check** | [http://localhost:3000/api/v1/health](http://localhost:3000/api/v1/health) | API & DB health check |
+| 🔌 **WebSocket Gateway** | `ws://localhost:3000/ws` | Real-time event gateway |
+
+---
+
+## 💻 Commands
+
+| Command | Working Directory | Description |
+| --- | --- | --- |
+| `pnpm dev` | root | Runs `api` and `web` in parallel in development mode |
+| `pnpm build` | root | Builds all packages (`shared`, `api`, `web`) |
+| `pnpm check` | root | Runs TypeScript type checking across the workspace |
+| `pnpm lint` | root | Runs ESLint |
+| `pnpm format` | root | Formats code using Prettier |
+| `pnpm --filter shared build` | packages/shared | Compiles the shared TypeScript package into `dist/` |
+| `pnpm --filter api db:generate` | apps/api | Generates migration SQL files from Drizzle schema |
+| `pnpm --filter api db:migrate` | apps/api | Executes pending Drizzle migrations |
+| `pnpm --filter api db:studio` | apps/api | Launches Drizzle Studio database UI |
+| `pnpm --filter api user:create <email> <pwd> <name> [role]` | apps/api | Creates a new user directly in the database |
+
+---
+
+## 🏛️ Project Architecture
+
+```text
+taskPulse/
+├── apps/
+│   ├── api/                     # NestJS 11 Backend Application
+│   │   ├── src/
+│   │   │   ├── main.ts          # Bootstrap: CORS, Cookie, Pipes, Filters, WS Adapter, Swagger
+│   │   │   ├── app.module.ts    # Application module orchestration
+│   │   │   ├── core/            # Infrastructure modules
+│   │   │   │   ├── config/      # Joi schema validation & Winston configuration
+│   │   │   │   ├── db/          # Drizzle ORM module, schemas, migrations
+│   │   │   │   ├── health/      # DB ping health check endpoint
+│   │   │   │   ├── http/        # Guards, decorators, filters, interceptors, pipes
+│   │   │   │   ├── realtime/    # EventsGateway (Raw WebSocket server)
+│   │   │   │   ├── security/    # TokenService (JWT signing & verification)
+│   │   │   │   ├── storage/     # StorageService (Sharp WebP re-encoding & disk I/O)
+│   │   │   │   └── utils/       # Utility helpers (bcrypt, duration parsing)
+│   │   │   └── modules/         # Feature business logic modules
+│   │   │       ├── auth/        # Auth, session management, cookie & bearer flows
+│   │   │       ├── tasks/       # Tasks CRUD, status updates, pagination, soft deletes
+│   │   │       ├── notifications/# Notifications & NotificationsScheduler (Cron)
+│   │   │       ├── uploads/     # File & avatar upload endpoints
+│   │   │       └── example/     # Starter reference module
+│   │   └── Dockerfile           # API production Dockerfile
+│   │
+│   └── web/                     # Next.js 16 (React 19) Frontend Application
+│       ├── src/
+│       │   ├── app/             # Next.js App Router pages
+│       │   │   ├── page.tsx     # Home / Task summary dashboard
+│       │   │   ├── register/    # Login and Registration page
+│       │   │   ├── tasks/       # Tasks listing & creation form
+│       │   │   ├── tasks/[id]/  # Task detail, edit & deletion view
+│       │   │   ├── notifications/# Notifications center & batch read
+│       │   │   └── profile/     # User profile & avatar upload
+│       │   ├── components/      # UI components (Navbar, TopBar, DueAlertModal, NotificationBell)
+│       │   ├── context/         # React Context (LanguageContext: TR / EN)
+│       │   ├── constants/       # UI texts & translations (ui.ts, ui.en.ts)
+│       │   ├── hooks/           # Custom hooks (useTaskDueSocket)
+│       │   ├── lib/             # API client, Web Audio alarm, formatters
+│       │   └── middleware.ts    # Route protection & session checking middleware
+│       └── .env.local           # Web environment variables
+│
+├── packages/
+│   └── shared/                  # Shared Contract Library
+│       ├── src/
+│       │   ├── api-client/      # createApiClient (Web cookie) & createMobileApiClient (Bearer)
+│       │   ├── constants/       # TASK_STATUSES, NOTIFICATION_TYPES, USER_ROLES, etc.
+│       │   └── types/           # Task, Notification, User, ApiResponse interfaces
+│       └── package.json
+│
+├── docker-compose.dev.yml       # Development PostgreSQL service
+├── docker-compose.yml           # Production configuration (Traefik + API + Postgres)
+└── pnpm-workspace.yaml          # pnpm workspace definition
+```
+
+### Two Core Architectural Rules
+
+1. **Modules only import each other through `index.ts`**: Never import `modules/auth/auth.service` from `modules/tasks`; import from `modules/auth`.
+2. **`core` never depends on feature modules**: Core provides foundational infrastructure and remains strictly agnostic of product domain logic.
+
+---
+
+## 🔔 Real-Time Task Due Notification Flow
+
+```text
+[User] -> Creates a Task (dueAt: Scheduled Time)
+                   │
+                   ▼ (Every second)
+    [NotificationsScheduler (Cron)]
+                   │
+dueAt <= NOW && status != 'completed' && reminderSentAt == null
+                   │
+                   ▼ (Database Transaction)
+  ┌────────────────────────────────────────────────────────┐
+  │ 1. Set reminderSentAt = NOW on tasks table             │
+  │ 2. Insert notification row with type 'task_due'        │
+  └────────────────────────────────────────────────────────┘
+                   │
+                   ▼ (WebSocket)
+          [EventsGateway.sendToUser]
+                   │
+                   ▼ 'task.due' Event
+    [Next.js Client: useTaskDueSocket]
+                   │
+  ┌────────────────┴───────────────────────────────────────┐
+  │ 🔊 playAlarmSound() -> Plays Web Audio alarm sound     │
+  │ 💬 DueAlertModal    -> Pops up modal alert on screen   │
+  │ 🔔 NotificationBell -> Increments unread counter badge │
+  └────────────────────────────────────────────────────────┘
+                   │
+                   ▼ (User clicks notification)
+  [PATCH /api/v1/notifications/:id/read] -> Redirects to Task Detail (/tasks/:id)
+```
+
+---
+
+## 🔐 Authentication & Security
+
+- **Web Clients**: All authentication state is carried in `httpOnly`, `SameSite=Lax`, `Secure` cookies (`access_token` and `refresh_token`). Tokens are never sent in the response body.
+- **Mobile & External Clients**: Dedicated endpoints under `/api/v1/auth/mobile/*` return tokens in the response body for storage in secure vaults (Keychain / Keystore), sent via `Authorization: Bearer <token>`.
+- **Token Rotation & Reuse Detection**: Every refresh rotates the token pair and invalidates the previous refresh token. If a previously consumed token is reused, all active tokens for that family are immediately revoked. A 10-second grace period prevents transient network race conditions from invalidating sessions accidentally.
+
+---
+
+## 📡 API Endpoints Summary
+
+All feature endpoints are prefixed with `/api/v1`:
+
+### Authentication (`/api/v1/auth`)
+- `POST /api/v1/auth/register` — User registration (Cookie)
+- `POST /api/v1/auth/login` — User sign-in (Cookie)
+- `POST /api/v1/auth/refresh` — Token rotation (Cookie)
+- `POST /api/v1/auth/logout` — Invalidate session and clear cookies
+- `GET /api/v1/auth/me` — Authenticated user details
+- `PATCH /api/v1/auth/me` — Update profile (name, surname, birthday)
+- `POST /api/v1/auth/mobile/*` — Mobile Bearer token variants
+
+### Tasks (`/api/v1/tasks`)
+- `GET /api/v1/tasks` — List tasks with pagination & status filters (`page`, `limit`, `status`, `search`)
+- `POST /api/v1/tasks` — Create a new task (`title`, `description`, `dueAt`)
+- `GET /api/v1/tasks/:id` — Get task by ID
+- `PATCH /api/v1/tasks/:id` — Update task details or status
+- `DELETE /api/v1/tasks/:id` — Soft-delete task (`is_deleted = true`)
+
+### Notifications (`/api/v1/notifications`)
+- `GET /api/v1/notifications` — List notifications (paginated)
+- `GET /api/v1/notifications/unread-count` — Count of unread notifications
+- `PATCH /api/v1/notifications/:id/read` — Mark a single notification as read
+- `PATCH /api/v1/notifications/read-all` — Mark all notifications as read
+
+### Uploads (`/api/v1/uploads`)
+- `POST /api/v1/uploads/image` — Upload image (converted to WebP via Sharp)
+- Uploaded files are served statically from `/api/uploads/:userId/:filename`.
+
+---
+
+## 🗄️ Database & Drizzle ORM
+
+Database schema files reside in `apps/api/src/core/db/schema/`:
+- `users`: User credentials, profile data, roles.
+- `tasks`: Tasks, status enum (`pending`, `in_progress`, `completed`), `due_at`, `reminder_sent_at`.
+- `notifications`: Notifications linked to tasks, read status (`read_at`), notification type.
+- `refresh_tokens`: Stored refresh tokens and families for reuse detection.
+
+### Migration Commands
 
 ```bash
-curl localhost:3000/api/v1/health
-curl -c cookies.txt -X POST localhost:3000/api/v1/auth/login \
-  -H 'content-type: application/json' \
-  -d '{"email":"admin@example.com","password":"secret123"}'
-curl -b cookies.txt localhost:3000/api/v1/auth/me
+pnpm --filter api db:generate    # Generate SQL migrations from schema
+pnpm --filter api db:migrate     # Apply migrations to database
+pnpm --filter api db:studio      # Open Drizzle Studio web GUI
 ```
 
-The same thing the way a mobile app does it — tokens in the body, then a Bearer header:
+---
+
+## 📦 Shared Library & API Client
+
+`packages/shared` unifies types and API calls between frontend and backend:
+- **Constants & Enums**: `TASK_STATUSES`, `NOTIFICATION_TYPES`, `USER_ROLES` shared across both sides.
+- **Centralized API Client**:
+  - `createApiClient` handles credentials and cookies automatically.
+  - Automatically handles `401 Unauthorized` responses via single-flight refresh queue without duplicating refresh calls.
+
+---
+
+## 🌐 Internationalization (i18n)
+
+TaskPulse features built-in multi-language support:
+- `apps/web/src/context/language-context.tsx`: Manages active language state (`tr` or `en`) persistently.
+- `apps/web/src/constants/ui.ts` & `ui.en.ts`: Complete translation dictionary for all UI text, modals, and notifications.
+
+---
+
+## 🚢 Production Deployment
+
+Production is deployed using `docker-compose.yml`, which expects an external Traefik reverse proxy attached to the `traefik-net` network:
 
 ```bash
-curl -X POST localhost:3000/api/v1/auth/mobile/login \
-  -H 'content-type: application/json' \
-  -d '{"email":"admin@example.com","password":"secret123"}'
-curl -H "Authorization: Bearer <accessToken>" localhost:3000/api/v1/auth/me
-```
+# 1. Fill in production secrets in .env
+cp .env.example .env
 
-Interactive API docs: <http://localhost:3000/api/docs> (development only).
-
-## Commands
-
-| Command                                                          | Where | What it does                                            |
-| ---------------------------------------------------------------- | ----- | ------------------------------------------------------- |
-| `pnpm dev`                                                       | root  | runs every package that has a `dev` script, in parallel |
-| `pnpm build` / `pnpm check` / `pnpm lint`                        | root  | builds / typechecks / lints every package               |
-| `pnpm --filter api db:generate`                                  | api   | generates a migration from the schema                   |
-| `pnpm --filter api db:migrate`                                   | api   | applies pending migrations                              |
-| `pnpm --filter api db:studio`                                    | api   | opens Drizzle Studio                                    |
-| `pnpm --filter api user:create <email> <password> <name> [role]` | api   | creates a user                                          |
-
-## Layout
-
-```
-apps/api/src/
-├─ main.ts           bootstrap: pipes, filter, interceptor, cors, cookies, swagger, ws adapter
-├─ app.module.ts     EVERY module in one file — the NestJS counterpart of a router
-├─ core/             NOTHING module-specific lives here
-│  ├─ config/        env.validation.ts (Joi — a bad deploy fails at boot), winston.config.ts
-│  ├─ db/            drizzle.module.ts (the DRIZZLE token), schema/ (tables), migrations/, migrate.ts
-│  ├─ health/        health check that actually hits the database
-│  ├─ http/          decorators, dto, filters, guards, interceptors, middleware, pipes, types
-│  ├─ realtime/      WebSocket gateway
-│  ├─ security/      token.service.ts — signing/verifying JWTs
-│  ├─ storage/       the ONLY class that touches the disk
-│  └─ utils/         password, duration
-└─ modules/          product code: auth/ example/ uploads/
-packages/shared/src/ constants + types + api-client — the contract shared with the frontend
-```
-
-### Two rules (do not break them)
-
-1. **Modules reach each other only through `index.ts`.** From `modules/x/` you never import
-   `modules/y/y.service`, you import `modules/y`.
-2. **`core` depends on no module.** If a file in core needs one, the design is wrong (signing a
-   token belongs in core, the login endpoint belongs in a module).
-
-### Module skeleton
-
-```
-modules/<name>/
-├─ <name>.service.ts             the ONLY layer that talks to the DB
-├─ <name>.controller.ts          HTTP surface: DTO in, ServiceResponse out
-├─ public-<name>.controller.ts   (optional) the same module's anonymous surface
-├─ dto/                          class-validator + @ApiProperty — Swagger is generated from these
-├─ <name>.module.ts              wiring
-└─ index.ts                      the module's public API
-```
-
-A new module = copy `modules/example/`, add one import and one line to `app.module.ts`.
-
-## Response shape
-
-Every successful response leaves in the same envelope, added by `ResponseTransformInterceptor`
-— controllers only return `{ message, data?, meta? }`:
-
-```json
-{ "success": true, "message": "Signed in", "data": {}, "timestamp": "2026-08-07T07:48:29.362Z" }
-```
-
-Errors go through `AllExceptionsFilter` instead. `error` is a stable CODE clients switch on and
-translate; free-form text belongs in `details`:
-
-```json
-{ "success": false, "error": "invalid_credentials", "statusCode": 401, "timestamp": "…" }
-{ "success": false, "error": "validation_error", "statusCode": 400,
-  "details": ["email must be an email"], "timestamp": "…" }
-```
-
-A 500 never leaks its message — the real reason goes to the log, keyed by the same timestamp.
-
-## Database
-
-Tables live under `apps/api/src/core/db/schema/`, one file per table; `index.ts` re-exports them
-all and is the entry point of `drizzle.config.ts` — a table missing from that barrel does not
-exist as far as `db:generate` is concerned.
-
-SQL is never written by hand:
-
-```bash
-# 1. write or edit schema/<table>.ts, add it to index.ts
-pnpm --filter api db:generate    # 2. SQL + meta snapshot are generated
-pnpm --filter api db:migrate     # 3. applied
-```
-
-Migrations are sequential, never skipped and never rolled back — you go back with a new
-migration. Read the generated `.sql` before applying it: Drizzle sometimes resolves a column
-rename as "drop + add", and that is data loss.
-
-Services inject the client with `@Inject(DRIZZLE) private readonly db: Database`.
-
-Prefer a soft delete (`is_deleted`) over removing a row, so history and the rows referencing it
-survive. Keep it separate from `is_active`, which is a user-facing switch (a disabled account, a
-paused row) — a table that needs both keeps both columns.
-
-## Auth
-
-A single user universe (the `users` table) with authority split by `role`. On the web surface
-**tokens are never in a response body** — they are httpOnly cookies the browser cannot read, so
-an XSS bug cannot walk off with the session. Access tokens last 15 minutes, refresh tokens 30
-days and are **tracked in the database**:
-
-- Every refresh rotates: the old row is burned with `used_at` and a new row is opened.
-- A token that comes back after it was spent counts as stolen and every token in its
-  `family_id` is revoked. A 10-second grace window keeps races (a dropped connection, a second
-  tab) from being mistaken for theft.
-- Logout revokes the whole family; a password change revokes ALL of the user's tokens but hands
-  a fresh pair back to the tab that made the request.
-
-Do not break this pattern: caching or auto-retrying the refresh endpoint sets off reuse
-detection for the wrong reason.
-
-Endpoints: `POST /api/v1/auth/{register,login,refresh,logout}`, `GET|PATCH /api/v1/auth/me`.
-If you do not want open sign-ups, delete the `register` handler from `auth.controller.ts` (and
-from `mobile-auth.controller.ts`) and add users with `user:create`.
-
-### Mobile
-
-A device has no cookie jar, so `mobile-auth.controller.ts` serves the same session over a
-different transport: `POST /api/v1/auth/mobile/{register,login,refresh,logout}` and
-`PATCH /api/v1/auth/mobile/me` return the pair in the body, and the app stores it — **the
-refresh token belongs in the Keychain / Keystore**, never in plain storage. `refresh` and
-`logout` take `{ "refreshToken": "…" }` as a body instead of reading a cookie.
-
-Behind the transport nothing differs: one `AuthService`, one `refresh_tokens` table, the same
-rotation and reuse detection. Guarded endpoints serve both audiences at once, because
-`JwtStrategy` reads the access token from the cookie first and the `Authorization: Bearer`
-header second — which is why `GET /api/v1/auth/me` has no mobile twin.
-
-Guarding a route:
-
-```ts
-@UseGuards(JwtGuard)                    // requires a session
-@UseGuards(JwtGuard, RolesGuard)        // …and a role
-@Roles('admin')
-```
-
-`@GetUser('id')` gives the caller's id; `@GetUser()` the whole `AuthContext`.
-
-## Uploads
-
-`POST /api/v1/uploads/image` (session required, multipart field name `file`) converts the image
-to WebP with sharp, writes it under `<UPLOAD_DIR>/<userId>/` and returns a public URL.
-Re-encoding strips EXIF (location data!) and guarantees the bytes really are an image.
-
-The only class that touches the disk is `core/storage/storage.service.ts` — switching to S3
-should mean changing that file and nothing else. The served URL (`/api/uploads/...`) sits
-OUTSIDE the `/api/v1` prefix on purpose: those URLs are stored in the database and must not
-move when the API version does.
-
-**In production, backing up the `uploads` volume matters as much as `pgdata`: those files are
-not in the database dump.**
-
-## Realtime
-
-`ws://…/ws` — raw `ws`, no client library needed. The browser sends the auth cookie on the
-handshake by itself, so there is no join message. A mobile client can send neither a cookie nor
-a header, so it appends the ACCESS token instead: `ws://…/ws?token=<accessToken>` (never the
-refresh token — a URL ends up in proxy logs). An unauthenticated socket is closed with code
-1008.
-
-Push to a user from any service: inject `EventsGateway` and call
-`sendToUser(userId, type, data)`. State is in memory, which assumes ONE API instance — scaling
-out means Redis pub/sub behind that method first.
-
-## Logs
-
-Winston with daily rotation into `apps/api/logs/`: `app-%DATE%.log` (info and up) and
-`error-%DATE%.log`, 15 days, gzipped. In development a pretty console transport is added; in
-production stdout stays JSON so `docker logs` and any collector can parse it.
-
-`HttpLoggerMiddleware` logs successful requests (and flags anything over 3s as `SLOW`);
-`AllExceptionsFilter` logs the failures with full context, so nothing is written twice.
-
-## Adding a frontend
-
-`apps/web` is empty. Install a framework inside it, give its `package.json` a `"name": "web"`
-and a `dev` script — the root `pnpm dev` (`pnpm --parallel -r dev`) will pick it up on its own.
-
-Example (React + Vite):
-
-```bash
-cd apps/web && pnpm create vite@latest . -- --template react-ts
-pnpm add shared@workspace:*
-```
-
-Add a proxy to `vite.config.ts` so the browser sees ONE origin — then the auth cookies are sent
-with no CORS configuration at all:
-
-```ts
-server: {
-  proxy: {
-    "/api": "http://localhost:3000",
-    "/ws": { target: "ws://localhost:3000", ws: true }
-  }
-}
-```
-
-Then use the client from `shared`:
-
-```ts
-import { createApiClient } from "shared";
-
-const api = createApiClient({ baseUrl: "", onSessionExpired: () => navigate("/login") });
-await api.auth.login({ email, password }); // cookies are set by the server
-const { items, meta } = await api.examples.list({ page: 1 });
-```
-
-The client sends `credentials: "include"` on every call and refreshes once, single-flight, when
-a request comes back 401 — you do not write that logic again.
-
-For a mobile app, `createMobileApiClient` is the same client over Bearer tokens. The only thing
-it needs from you is where to keep the pair:
-
-```ts
-import { createMobileApiClient } from "shared";
-
-const api = createMobileApiClient({
-  baseUrl: "https://api.example.com",
-  tokens: {
-    read: () => readFromSecureStore(),
-    write: (pair) => writeToSecureStore(pair),
-  },
-  onSessionExpired: () => navigation.reset({ routes: [{ name: "SignIn" }] }),
-});
-
-await api.auth.login({ email, password }); // the pair is stored for you
-const { items, meta } = await api.examples.list({ page: 1 });
-```
-
-Every non-auth service is the exact same code in both clients — a resource service never knew
-how the session travelled.
-
-If the frontend runs on a different origin than the API, put that origin in `CORS_ORIGIN`;
-credentialed requests are rejected by browsers against a wildcard, so an empty value means
-same-origin only.
-
-If you need more than one frontend (say `apps/admin`), copy the same pattern: a new folder, a
-different port, a new service plus a Traefik router in `docker-compose.yml`.
-
-## Production deploy
-
-`docker-compose.yml` assumes a Traefik instance already running on the VPS and owning the
-external `traefik-net` network — it does not start Traefik itself. Entrypoint `https`, cert
-resolver `letsencrypt`; change the labels if yours are named differently.
-
-```bash
-cp .env.example .env      # DOMAIN, DB_*, JWT_* → real values
+# 2. Build and launch services
 docker compose up -d --build
+
+# 3. Run production database migrations
 docker compose exec api node dist/core/db/migrate.js
 ```
 
-Postgres sits on the `internal` network only; neither the outside world nor Traefik can reach
-it. Uploaded files persist in the `uploads` volume. Swagger is disabled when
-`NODE_ENV=production` — the schema is a map of every endpoint and every field name.
+---
 
-## Commits
+## 📝 Commit Standards
 
-Conventional Commits — `<type>(<scope>): <subject>`. Lowercase, imperative ("add", not "added"),
-no trailing period, under ~72 characters.
+Commits adhere to the **Conventional Commits** specification:
+`<type>(<scope>): <description>`
 
-| Type       | When                                                    |
-| ---------- | ------------------------------------------------------- |
-| `feat`     | a new endpoint, module, page or user-visible capability |
-| `fix`      | a bug in something that already worked                  |
-| `docs`     | README, CLAUDE.md, comments                             |
-| `refactor` | same behaviour, different code                          |
-| `chore`    | dependencies, config, tooling, deleting dead code       |
-| `build`    | Dockerfile, compose, tsconfig — the build itself        |
-| `test`     | tests only                                              |
-| `style`    | formatting only, no logic (a prettier run)              |
-| `perf`     | a change made for speed                                 |
-
-Scope is the part of the repo the commit touches: `api`, `web`, `shared`, `db`, or the module
-name when that is narrower — `notes`, `auth`, `uploads`.
-
-```
-feat(notes): add the notes module with CRUD endpoints
-feat(db): add notes table and note_color enum
-feat(shared): add note types, constants and api-client service
-feat(web): add the /notes route
-fix(notes): stop a title-only PATCH from resetting the colour
-fix(auth): clear the refresh cookie on the path it was set on
-chore: remove the example module
-chore(deps): bump drizzle-orm to 0.45.2
-docs: rewrite the README for the practice-apps layout
-build(docker): pin the postgres image to 16.4
-```
-
-A new app lands as several commits, not one — the shared contract, the table and migration, the
-module, the frontend route. Each one should build on its own.
-
-## Working with AI tools (CLAUDE.md)
-
-[CLAUDE.md](CLAUDE.md) in the repo root holds this skeleton's rules — module boundaries, the
-response envelope, the migration flow, the refresh token pattern — in a form meant to be read
-by a machine. [CLAUDE.TR.md](CLAUDE.TR.md) is a Turkish translation for human readers; tools
-read `CLAUDE.md`, so keep both in sync when the rules change.
-
-- **Using Claude Code?** Nothing to do: the file is loaded automatically in every session.
-- **Using something else?** (Cursor, Copilot, Codex, Gemini…) The file is not picked up on its
-  own. Copy its contents into that tool's own rules file — `.cursor/rules/`,
-  `.github/copilot-instructions.md`, `AGENTS.md`, `GEMINI.md`, or whatever it expects. Copy the
-  text rather than referring to `CLAUDE.md`; most tools will not open a file you merely mention.
-- **Not using AI at all?** Read it anyway: it is the shortest explanation of why the skeleton is
-  built this way.
-
-## Make it yours
-
-- [ ] Change the project name in `package.json` and `docker-compose.yml` (`name: app`,
-      `container_name: app_*`, `traefik.http.routers.app-*`)
-- [ ] Put a real `DOMAIN` and random JWT secrets in `.env` (`openssl rand -hex 32`)
-- [ ] `modules/example/`, `schema/examples.ts`, `constants/example.ts`, `types/example.ts`,
-      `api-client/example.service.ts` → delete them or grow them into your first real module
-- [ ] Delete `core/realtime/` (WebSocket) or `core/storage/` + `modules/uploads/` if you do not
-      need them
-- [ ] Install a framework in `apps/web`, uncomment the `web` service in the compose file
-- [ ] Set the Swagger title and description in `main.ts`
-- [ ] If you use an AI tool other than Claude Code, copy `CLAUDE.md` into its rules file
+- `feat`: New feature or endpoint
+- `fix`: Bug fix
+- `docs`: Documentation updates
+- `refactor`: Code changes without functional differences
+- `style`: Code style / formatting
+- `chore`: Tooling, dependency, or config updates
